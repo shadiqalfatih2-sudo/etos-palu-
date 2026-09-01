@@ -49,11 +49,15 @@ if (!html.includes('/supabase-direct.js')) {
   html = html.replace('<script src="/supabase-direct.js"></script>', runtimeBridge);
 }
 
-// This guard must load after the canonical inline dashboard script so it can wrap
-// the already-defined global functions without changing the canonical payload.
-if (!html.includes('/ui-session-fix.js')) {
+// These guards must load after the canonical inline dashboard script so they can
+// wrap already-defined global functions without changing the canonical payload.
+const postRuntime = [
+  '    <script src="/ui-session-fix.js"></script>',
+  '    <script src="/ui-protected-actions.js"></script>'
+].join('\n');
+if (!html.includes('/ui-session-fix.js') || !html.includes('/ui-protected-actions.js')) {
   if (!html.includes('</body>')) throw new Error('Canonical HTML has no </body> element.');
-  html = html.replace('</body>', '    <script src="/ui-session-fix.js"></script>\n</body>');
+  html = html.replace('</body>', postRuntime + '\n</body>');
 }
 
 fs.rmSync(path.join(__dirname, 'dist'), { recursive: true, force: true });
@@ -62,7 +66,8 @@ fs.writeFileSync(path.join(__dirname, 'dist', 'index.html'), html, 'utf8');
 fs.copyFileSync(path.join(__dirname, 'supabase-direct.js'), path.join(__dirname, 'dist', 'supabase-direct.js'));
 fs.copyFileSync(path.join(__dirname, 'supabase-secure.js'), path.join(__dirname, 'dist', 'supabase-secure.js'));
 fs.copyFileSync(path.join(__dirname, 'ui-session-fix.js'), path.join(__dirname, 'dist', 'ui-session-fix.js'));
+fs.copyFileSync(path.join(__dirname, 'ui-protected-actions.js'), path.join(__dirname, 'dist', 'ui-protected-actions.js'));
 
 console.log(`[CANONICAL_ACTIVE] sourceBytes=${canonicalBuffer.length} sourceSha256=${canonicalSha256} outputBytes=${Buffer.byteLength(html, 'utf8')}`);
 console.log('[RUNTIME_BRIDGE] /supabase-direct.js + /supabase-secure.js injected before legacy scripts');
-console.log('[SESSION_UX] /ui-session-fix.js injected after canonical dashboard script');
+console.log('[SESSION_UX] /ui-session-fix.js + /ui-protected-actions.js injected after canonical dashboard script');
