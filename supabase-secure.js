@@ -3,12 +3,12 @@
   'use strict';
   const URL='https://jrrmgfzfpcrjtyjqpaff.supabase.co/functions/v1/etos-secure-api';
   const KEY='sb_publishable_VyCXSeR2FaGERAoEUDU5DA_vMigqty3';
-  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH6-ASSESSMENT-PUBLIC';
+  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH7-PROFILE-ASSESSMENT';
   const baseRun=window.google&&window.google.script&&window.google.script.run;
   if(!baseRun){ console.error('[ETOS secure] base google.script.run shim not found'); return; }
 
   const SECURE=new Set([
-    'getIDPDetail','getCoachingList','getFacilitatorAssessmentHub','getFacilitatorAssessmentReport',
+    'getAwardeeProfile','getIDPDetail','getCoachingList','getFacilitatorAssessmentHub','getFacilitatorAssessmentReport',
     'getMentoringCases','getMentoringCommandCenter','getCohortDevelopmentAnalytics','getAwardee360',
     'getLatestAwardeeRuleAnalysis','analyzeAwardeeWithRules','saveMentoringCase','updateMentoringCase','saveCompetencyEvidence',
     'getAbsensiEntryOptions','saveAbsensiEntry','savePeriodePembinaan','saveCoaching',
@@ -19,7 +19,7 @@
   ]);
   const ADMIN=new Set(['getAbsensiEntryOptions','saveAbsensiEntry','savePeriodePembinaan']);
   const PUBLIC=new Set([
-    'getPeriodePembinaanList','getAbsensiList','getAssessmentHub','saveAssessment',
+    'getPeriodePembinaanList','getAbsensiList',
     'getPublicKajianReflectionForm','verifyKajianReflectionParticipant','submitKajianReflection'
   ]);
   const LOGIN=new Set(['verifyFacilitatorAccess','verifyAbsensiAdminPin']);
