@@ -36,18 +36,24 @@ if (canonicalSha256 !== EXPECTED_CANONICAL_SHA256) {
 }
 
 let html = canonicalBuffer.toString('utf8');
-const runtimeBridge = '<script src="/supabase-direct.js"></script>';
+const runtimeBridge = [
+  '<script src="/supabase-direct.js"></script>',
+  '<script src="/supabase-secure.js"></script>'
+].join('\n    ');
 if (!html.includes('<head>')) throw new Error('Canonical HTML has no <head> element.');
 if (!html.includes('/supabase-direct.js')) {
-  // Blocking script in the first position of <head>: the compatibility shim must
-  // exist before any legacy JavaScript checks for google.script.run.
+  // Both blocking scripts are placed before legacy JavaScript. The direct shim creates
+  // google.script.run first, then the secure overlay replaces protected methods only.
   html = html.replace('<head>', '<head>\n    <!-- ETOS V2: Vercel -> Supabase compatibility runtime -->\n    ' + runtimeBridge);
+} else if (!html.includes('/supabase-secure.js')) {
+  html = html.replace('<script src="/supabase-direct.js"></script>', runtimeBridge);
 }
 
 fs.rmSync(path.join(__dirname, 'dist'), { recursive: true, force: true });
 fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(__dirname, 'dist', 'index.html'), html, 'utf8');
 fs.copyFileSync(path.join(__dirname, 'supabase-direct.js'), path.join(__dirname, 'dist', 'supabase-direct.js'));
+fs.copyFileSync(path.join(__dirname, 'supabase-secure.js'), path.join(__dirname, 'dist', 'supabase-secure.js'));
 
 console.log(`[CANONICAL_ACTIVE] sourceBytes=${canonicalBuffer.length} sourceSha256=${canonicalSha256} outputBytes=${Buffer.byteLength(html, 'utf8')}`);
-console.log('[RUNTIME_BRIDGE] /supabase-direct.js injected before legacy scripts');
+console.log('[RUNTIME_BRIDGE] /supabase-direct.js + /supabase-secure.js injected before legacy scripts');
