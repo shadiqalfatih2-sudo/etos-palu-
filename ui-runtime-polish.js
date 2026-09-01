@@ -31,13 +31,17 @@
   }
   ['loadDash','loadDropdownOptions','loadAwardeeList','loadAkademikView','loadPrestasiView','loadDetailOrganisasi'].forEach(waitForFreshPublicData);
 
-  /* Header mail/bell controls in the legacy visual had no backed feature at all.
-     Hide them rather than showing a fake notification dot or a dead button. */
+  /* Remove visual controls that never had a backed feature. */
   try{
     Array.prototype.forEach.call(document.querySelectorAll('header button'),function(button){
       var icon=button.querySelector('[data-lucide="mail"],[data-lucide="bell"]');
       if(icon){button.classList.add('hidden');button.setAttribute('aria-hidden','true');button.setAttribute('tabindex','-1');}
     });
+    var fakeGlobalSearch=document.querySelector('header input[placeholder="Search task or data..."]');
+    if(fakeGlobalSearch){
+      var searchWrap=fakeGlobalSearch.parentElement;
+      if(searchWrap){searchWrap.classList.add('hidden');searchWrap.setAttribute('aria-hidden','true');}
+    }
   }catch(e){console.warn('[ETOS header cleanup]',e);}
 
   /* Neutral unauthenticated facilitator header; real values load after session. */
@@ -70,5 +74,5 @@
 }';
   document.head.appendChild(style);
 
-  window.ETOS_RUNTIME_POLISH={version:'ETOS-V2-POLISH-2026.09.02-BATCH7-FINAL'};
+  window.ETOS_RUNTIME_POLISH={version:'ETOS-V2-POLISH-2026.09.02-BATCH7-ACCEPTANCE'};
 })();
