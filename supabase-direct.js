@@ -1,14 +1,14 @@
 /*
  * ETOS ID PALU — Supabase Direct Compatibility Layer
- * Vercel browser -> Supabase Data API. No Google Apps Script runtime.
- * Publishable key only. Sensitive reads/writes require authenticated server/RLS paths.
+ * Public browser reads only. Sensitive/operational actions are handled by
+ * supabase-secure.js through authenticated Edge Functions.
  */
 (function () {
   'use strict';
 
   const SUPABASE_URL = 'https://jrrmgfzfpcrjtyjqpaff.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_VyCXSeR2FaGERAoEUDU5DA_vMigqty3';
-  const DIRECT_VERSION = 'ETOS-V2-DIRECT-2026.09.01-PARITY2';
+  const DIRECT_VERSION = 'ETOS-V2-DIRECT-2026.09.02-DATA-INTEGRITY';
   const CACHE_MS = 45000;
   const memory = { bootstrap: null, savedAt: 0, inflight: null, lastMs: null };
 
@@ -20,11 +20,13 @@
     return Number.isFinite(n) ? n : null;
   }
   function isActive(v) { return low(v) === 'aktif'; }
-  function isAlumni(v) { return ['lulus', 'alumni', 'nonaktif', 'tidak aktif'].includes(low(v)); }
-  function codeNumber(v) { const m = clean(v).match(/(\d+)$/); return m ? Number(m[1]) : 0; }
   function avg(values) {
     const xs = values.filter(Number.isFinite);
     return xs.length ? xs.reduce(function (a, b) { return a + b; }, 0) / xs.length : null;
+  }
+  function clampPct(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : null;
   }
 
   async function rest(path, options) {
@@ -89,11 +91,21 @@
     return memory.inflight;
   }
 
-  function mapAwardee(a, featured) {
+  function idpRowCoverage(db, awardeeCode) {
+    const code = clean(awardeeCode);
+    const r = (db.idpOverview || []).find(function (x) { return clean(x.awardee_code) === code; });
+    if (!r || !r.connected) return null;
+    const filled = Number(r.filled_rows || 0);
+    const last = Number(r.last_row || 0);
+    if (!last) return null;
+    return clampPct((filled / last) * 100);
+  }
+
+  function mapAwardee(db, a) {
     const gpa = num(a.latest_gpa);
-    const n = codeNumber(a.id || a.awardee_code);
+    const id = clean(a.id || a.awardee_code);
     return {
-      id: clean(a.id || a.awardee_code),
+      id: id,
       nama: clean(a.name),
       kampus: clean(a.university) || '-',
       jurusan: clean(a.major) || '-',
@@ -101,8 +113,9 @@
       status: clean(a.status) || '-',
       motto: clean(a.motto),
       foto: clean(a.photo_url),
-      ipk: gpa == null ? '0.00' : gpa.toFixed(2),
-      progress: isAlumni(a.status) ? 100 : (featured ? ((n * 17) % 60 + 40) : 0)
+      ipk: gpa == null ? '-' : gpa.toFixed(2),
+      progress: idpRowCoverage(db, id),
+      progressSource: 'IDP_ROW_COVERAGE'
     };
   }
 
@@ -110,9 +123,15 @@
     const g = num(r.gpa);
     const semester = clean(r.semester || r.semester_number || r.semester_raw) || '-';
     return {
-      id: clean(r.id), awdId: clean(r.awardee_code), nama: clean(r.name) || 'Unknown',
-      angkatan: clean(r.cohort), smt: semester, semester: semester,
-      ips: g == null ? '-' : g.toFixed(2), ipk: g == null ? '-' : g.toFixed(2), status: '-'
+      id: clean(r.id),
+      awdId: clean(r.awardee_code),
+      nama: clean(r.name) || 'Unknown',
+      angkatan: clean(r.cohort),
+      smt: semester,
+      semester: semester,
+      ips: '-',
+      ipk: g == null ? '-' : g.toFixed(2),
+      status: '-'
     };
   }
 
@@ -126,138 +145,104 @@
   }
 
   function mapOrganization(r) {
+    const start = clean(r.start_year), end = clean(r.end_year);
+    const year = start && end ? (start + ' - ' + end) : (start || end || '-');
     return {
       id: clean(r.organization_code || r.id), awdId: clean(r.awardee_code),
       nama: clean(r.organization_name) || '-', jab: clean(r.position_title) || '-',
-      thn: (clean(r.start_year) + ' - ' + clean(r.end_year)).trim(), tingkat: clean(r.level) || '-'
+      thn: year, tingkat: clean(r.level) || '-'
     };
   }
 
-  function findAwardee(db, value) {
-    const needle = low(value);
-    const row = db.awardees.find(function (a) { return low(a.id || a.awardee_code) === needle || low(a.name) === needle; });
-    if (!row) throw new Error('Awardee tidak ditemukan.');
-    return row;
-  }
-
-  function publicProfile(db, value) {
-    const a = findAwardee(db, value);
-    return Object.assign(mapAwardee(a, false), { wa: 'Terlindungi', email: 'Terlindungi' });
-  }
-
   function idpOverview(db) {
-    const items = db.idpOverview.map(function (r) {
+    const items = (db.idpOverview || []).map(function (r) {
       return {
         id: clean(r.awardee_code), nama: clean(r.name), angkatan: clean(r.cohort), status: clean(r.status),
         connected: !!r.connected, sheetName: clean(r.source_sheet), filledRows: Number(r.filled_rows || 0),
         filledCells: Number(r.filled_cells || 0), lastRow: Number(r.last_row || 0),
         lastColumn: Number(r.last_column || 0), truncated: !!r.truncated,
-        sourceType: clean(r.source_type) || 'supabase', sourceUpdatedAt: clean(r.source_updated_at)
+        sourceType: clean(r.source_type) || 'supabase', sourceUpdatedAt: clean(r.source_updated_at),
+        rowCoveragePct: r.connected && Number(r.last_row || 0) > 0
+          ? clampPct(Number(r.filled_rows || 0) / Number(r.last_row) * 100)
+          : null
       };
     });
     const connected = items.filter(function (x) { return x.connected; }).length;
-    return { sourceName: 'Palu-IDP KI — Snapshot Supabase', totalActive: items.length, connected: connected, missing: items.length - connected, items: items };
-  }
-
-  function assessmentHub(db) {
-    return { awardees: db.awardees.filter(function (a) { return isActive(a.status); }).map(function (a) {
-      const x = mapAwardee(a, false);
-      return { id: x.id, nama: x.nama, kampus: x.kampus, jurusan: x.jurusan, angkatan: x.angkatan, status: x.status, foto: x.foto };
-    }) };
-  }
-
-  function commandCenterPublic(db) {
-    const active = db.awardees.filter(function (a) { return isActive(a.status); });
-    const byCode = {};
-    db.academic.forEach(function (r) {
-      const c = clean(r.awardee_code), g = num(r.gpa);
-      if (c && g != null) (byCode[c] || (byCode[c] = [])).push(g);
-    });
-    const cohorts = {};
-    active.forEach(function (a) {
-      const key = clean(a.cohort) || '-';
-      const c = cohorts[key] || (cohorts[key] = { cohort: key, active: 0, gpas: [] });
-      c.active += 1;
-      const xs = byCode[clean(a.id || a.awardee_code)] || [];
-      if (xs.length) c.gpas.push(xs[xs.length - 1]);
-    });
     return {
-      stats: { active: active.length, needs_attention: 0, high_attention: 0, overdue_rtl: 0, stale_coaching: 0, positive_momentum: 0 },
-      needsAttention: [], positiveMomentum: [], upcomingActions: [], rows: [], selectedPeriod: null,
-      cohorts: Object.keys(cohorts).sort().map(function (k) {
-        const c = cohorts[k];
-        return { cohort: c.cohort, active: c.active, needs_attention: 0, avg_ipk: avg(c.gpas), avg_attendance: null, open_cases: 0, positive_momentum: 0, top_issues: [] };
-      }),
-      note: 'Ringkasan publik. Detail pendampingan memerlukan login fasilitator.'
+      sourceName: 'Palu-IDP KI — cache server terakhir',
+      totalActive: items.length,
+      connected: connected,
+      missing: items.length - connected,
+      items: items
     };
   }
 
-  function public360(db, params) {
-    const key = params && (params.id_awardee || params.nama);
-    const profile = publicProfile(db, key || '');
-    const academic = db.academic.filter(function (r) { return clean(r.awardee_code) === profile.id; }).map(mapAcademic);
-    const achievements = db.achievements.filter(function (r) { return clean(r.awardee_code) === profile.id; }).map(mapAchievement);
-    const organizations = db.organizations.filter(function (r) { return clean(r.awardee_code) === profile.id; }).map(function (r) { return { organisasi: clean(r.organization_name), jabatan: clean(r.position_title) }; });
-    const idp = db.idpOverview.find(function (r) { return clean(r.awardee_code) === profile.id; });
-    return {
-      profile: profile,
-      analysis: { tingkat_perhatian: 'Login fasilitator diperlukan', ringkasan: 'Data publik dasar tersedia. Analisis pendampingan, assessment, coaching dan case dilindungi.', catatan_peninjauan: 'Data sensitif tidak dikirim ke browser anonim.' },
-      briefing: { text: 'Ringkasan publik dari Supabase. Login fasilitator diperlukan untuk Awardee 360 penuh.' },
-      growth: {}, competencies: { dimensions: [], note: 'Dilindungi' },
-      idp: { tersedia: !!(idp && idp.connected), skor_kelengkapan: idp && idp.connected ? 100 : 0, metadataOnly: true },
-      reflection: { tersedia: false }, attendance: { tersedia: false }, assessment: { records: {}, completed: 0, needCheckin: false },
-      cases: [], academic: academic.map(function (r) { return { semester: r.smt, ipk: r.ipk === '-' ? null : Number(r.ipk) }; }),
-      coaching: [], organizations: organizations, achievements: achievements.map(function (r) { return { prestasi: r.prestasi, tingkat: r.tingkat }; }),
-      portfolio: { tersedia: false }
-    };
+  function protectedAction(name) {
+    throw new Error('Endpoint ' + name + ' memerlukan secure runtime. Muat ulang halaman jika pesan ini muncul.');
   }
 
-  function authRequired() { throw new Error('Fitur ini memerlukan autentikasi fasilitator Supabase. Tidak ada token preview atau PIN palsu pada V2.'); }
-  function writeRequired() { throw new Error('Operasi tulis memerlukan Supabase Auth/RLS atau endpoint server-side terautentikasi.'); }
-
-  async function invoke(name, params) {
+  async function invoke(name) {
     const db = await loadBootstrap(false);
     switch (name) {
       case 'getDashboardStats': {
-        const gpas = db.awardees.map(function (a) { return num(a.latest_gpa); }).filter(function (x) { return x != null; });
+        const gpas = db.academic.map(function (r) { return num(r.gpa); }).filter(function (x) { return x != null; });
         const mean = avg(gpas);
-        return { totalAwardee: Number(db.stats.awardees_total || db.awardees.length), aktif: Number(db.stats.awardees_active || db.awardees.filter(function (a) { return isActive(a.status); }).length), warning: db.awardees.filter(function (a) { return low(a.status).indexOf('warning') >= 0; }).length, avgIPK: mean == null ? '0.00' : mean.toFixed(2), directMs: memory.lastMs };
+        return {
+          totalAwardee: Number(db.stats.awardees_total || db.awardees.length),
+          aktif: Number(db.stats.awardees_active || db.awardees.filter(function (a) { return isActive(a.status); }).length),
+          warning: db.awardees.filter(function (a) { return low(a.status).indexOf('warning') >= 0; }).length,
+          avgIPK: mean == null ? '-' : mean.toFixed(2),
+          directMs: memory.lastMs
+        };
       }
-      case 'getFeaturedAwardees': return db.awardees.map(function (a) { return mapAwardee(a, true); });
-      case 'getAwardeeList': return db.awardees.map(function (a) { return mapAwardee(a, false); });
+      case 'getFeaturedAwardees': return db.awardees.map(function (a) { return mapAwardee(db, a); });
+      case 'getAwardeeList': return db.awardees.map(function (a) { return mapAwardee(db, a); });
       case 'getDropdownOptions': return db.awardees.map(function (a) { return { id: clean(a.id || a.awardee_code), nama: clean(a.name) }; });
-      case 'getAwardeeProfile': return publicProfile(db, params);
-      case 'getAlumniList': return db.awardees.filter(function (a) { return isAlumni(a.status); }).map(function (a) { return Object.assign(mapAwardee(a, false), { kontribusi: 'Belum ada data kontribusi publik terbaru', cv: '', gdrive: '', portfolioTersedia: false }); });
       case 'getAkademikList': return db.academic.map(mapAcademic);
       case 'getPrestasiList': return db.achievements.map(mapAchievement);
       case 'getOrganisasiList': return db.organizations.map(mapOrganization);
-      case 'getCoachingList': return [];
-      case 'getPeriodePembinaanList': return [];
-      case 'getAbsensiList': return { items: [], periods: [], selectedPeriod: null, legacyMode: false, unresolvedTahsin: 0 };
       case 'getIDPOverview': return idpOverview(db);
-      case 'getIDPDetail': return authRequired();
-      case 'getAssessmentHub': return assessmentHub(db);
-      case 'getFacilitatorAssessmentHub': return authRequired();
-      case 'getFacilitatorAssessmentReport': return authRequired();
-      case 'getMentoringCases': return authRequired();
-      case 'getMentoringCommandCenter': return commandCenterPublic(db);
-      case 'getCohortDevelopmentAnalytics': return commandCenterPublic(db);
-      case 'getAwardee360': return public360(db, params || {});
-      case 'getLatestAwardeeRuleAnalysis': return authRequired();
-      case 'analyzeAwardeeWithRules': return authRequired();
-      case 'verifyFacilitatorAccess': return authRequired();
-      case 'verifyAbsensiAdminPin': return authRequired();
-      case 'getAbsensiEntryOptions': return authRequired();
-      case 'verifyAssessmentAccess': return authRequired();
-      case 'getPublicKajianReflectionForm': return authRequired();
-      case 'verifyKajianReflectionParticipant': return authRequired();
-      case 'getFasilitatorProfile': return { nama: 'Fasilitator ETOS ID Palu', email: '', wa: '', wilayah: 'Palu', bio: 'Dashboard V2 Direct Supabase' };
-      case 'logoutAbsensiAdmin': return true;
-      case 'saveAssessment': case 'saveMentoringCase': case 'updateMentoringCase': case 'saveCompetencyEvidence':
-      case 'saveAbsensiEntry': case 'savePeriodePembinaan': case 'saveAwardee': case 'saveAkademik': case 'saveCoaching':
-      case 'savePrestasi': case 'saveOrganisasi': case 'saveAlumniPortfolio': case 'saveAwardeePhoto': case 'saveFasilitatorProfile':
-      case 'submitKajianReflection': return writeRequired();
-      default: throw new Error('Endpoint V2 belum dipetakan: ' + name);
+      case 'getAwardeeProfile':
+      case 'getAlumniList':
+      case 'getCoachingList':
+      case 'getPeriodePembinaanList':
+      case 'getAbsensiList':
+      case 'getIDPDetail':
+      case 'getAssessmentHub':
+      case 'getFacilitatorAssessmentHub':
+      case 'getFacilitatorAssessmentReport':
+      case 'getMentoringCases':
+      case 'getMentoringCommandCenter':
+      case 'getCohortDevelopmentAnalytics':
+      case 'getAwardee360':
+      case 'getLatestAwardeeRuleAnalysis':
+      case 'analyzeAwardeeWithRules':
+      case 'verifyFacilitatorAccess':
+      case 'verifyAbsensiAdminPin':
+      case 'getAbsensiEntryOptions':
+      case 'verifyAssessmentAccess':
+      case 'getPublicKajianReflectionForm':
+      case 'verifyKajianReflectionParticipant':
+      case 'getFasilitatorProfile':
+      case 'logoutAbsensiAdmin':
+      case 'saveAssessment':
+      case 'saveMentoringCase':
+      case 'updateMentoringCase':
+      case 'saveCompetencyEvidence':
+      case 'saveAbsensiEntry':
+      case 'savePeriodePembinaan':
+      case 'saveAwardee':
+      case 'saveAkademik':
+      case 'saveCoaching':
+      case 'savePrestasi':
+      case 'saveOrganisasi':
+      case 'saveAlumniPortfolio':
+      case 'saveAwardeePhoto':
+      case 'saveFasilitatorProfile':
+      case 'submitKajianReflection':
+        return protectedAction(name);
+      default:
+        throw new Error('Endpoint V2 belum dipetakan: ' + name);
     }
   }
 
@@ -268,10 +253,9 @@
         if (prop === 'withFailureHandler') return function (fn) { return makeRunner(successHandler, fn); };
         return function () {
           const args = Array.prototype.slice.call(arguments);
-          let method = String(prop), payload;
-          if (method === 'backendInvoke') { method = args[0]; payload = args[1]; }
-          else payload = args.length <= 1 ? args[0] : args;
-          invoke(method, payload).then(function (data) {
+          let method = String(prop);
+          if (method === 'backendInvoke') method = args[0];
+          invoke(method).then(function (data) {
             if (typeof successHandler === 'function') successHandler({ success: true, data: data });
           }).catch(function (err) {
             if (typeof failureHandler === 'function') failureHandler(err);
