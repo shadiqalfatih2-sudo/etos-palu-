@@ -1,15 +1,10 @@
-/* ETOS V2 — Batch 7 runtime polish: cache coherence + mobile ergonomics. */
+/* ETOS V2 — Batch 7 runtime polish: cache coherence + mobile ergonomics + truthful empty states. */
 (function(){
   'use strict';
 
   var refreshPromise=null;
   var originalClear=window.clearAllBackendCache;
 
-  /*
-   * Legacy cache and Supabase Direct cache are separate. After a successful
-   * write, refresh the public bootstrap once and make public list loaders wait
-   * for it, so a saved record is visible immediately instead of up to 45s later.
-   */
   if(typeof originalClear==='function'){
     window.clearAllBackendCache=function(){
       var result=originalClear.apply(this,arguments);
@@ -18,7 +13,7 @@
           var p=Promise.resolve(window.ETOS_DIRECT.reload());
           refreshPromise=p;
           p.catch(function(err){console.warn('[ETOS cache refresh]',err);})
-           .finally(function(){if(refreshPromise===p) refreshPromise=null;});
+           .finally(function(){if(refreshPromise===p)refreshPromise=null;});
         }
       }catch(e){console.warn('[ETOS cache invalidate]',e);}
       return result;
@@ -27,22 +22,34 @@
 
   function waitForFreshPublicData(name){
     var original=window[name];
-    if(typeof original!=='function') return;
+    if(typeof original!=='function')return;
     window[name]=function(){
       var self=this,args=arguments;
-      if(refreshPromise){
-        return refreshPromise.then(function(){return original.apply(self,args);},function(){return original.apply(self,args);});
-      }
+      if(refreshPromise)return refreshPromise.then(function(){return original.apply(self,args);},function(){return original.apply(self,args);});
       return original.apply(self,args);
     };
   }
+  ['loadDash','loadDropdownOptions','loadAwardeeList','loadAkademikView','loadPrestasiView','loadDetailOrganisasi'].forEach(waitForFreshPublicData);
 
-  [
-    'loadDash','loadDropdownOptions','loadAwardeeList','loadAkademikView',
-    'loadPrestasiView','loadDetailOrganisasi'
-  ].forEach(waitForFreshPublicData);
+  /* Header mail/bell controls in the legacy visual had no backed feature at all.
+     Hide them rather than showing a fake notification dot or a dead button. */
+  try{
+    Array.prototype.forEach.call(document.querySelectorAll('header button'),function(button){
+      var icon=button.querySelector('[data-lucide="mail"],[data-lucide="bell"]');
+      if(icon){button.classList.add('hidden');button.setAttribute('aria-hidden','true');button.setAttribute('tabindex','-1');}
+    });
+  }catch(e){console.warn('[ETOS header cleanup]',e);}
 
-  /* Small-screen forms: avoid squeezed two-column controls and iOS input zoom. */
+  /* Neutral unauthenticated facilitator header; real values load after session. */
+  try{
+    var topName=document.getElementById('top-fas-nama');
+    var topEmail=document.getElementById('top-fas-email');
+    var hasSession=false;
+    try{hasSession=!!(sessionStorage.getItem('etos_facilitator_access_token')||sessionStorage.getItem('etos_absensi_admin_token'));}catch(_){}
+    if(!hasSession){if(topName)topName.textContent='Profil Fasilitator';if(topEmail)topEmail.textContent='Masuk untuk melihat profil';}
+  }catch(e){console.warn('[ETOS facilitator placeholder]',e);}
+
+  /* Small-screen forms: avoid squeezed columns and iOS input zoom. */
   var style=document.createElement('style');
   style.id='etos-batch7-responsive-polish';
   style.textContent='\
@@ -63,5 +70,5 @@
 }';
   document.head.appendChild(style);
 
-  window.ETOS_RUNTIME_POLISH={version:'ETOS-V2-POLISH-2026.09.02-BATCH7-1'};
+  window.ETOS_RUNTIME_POLISH={version:'ETOS-V2-POLISH-2026.09.02-BATCH7-FINAL'};
 })();
