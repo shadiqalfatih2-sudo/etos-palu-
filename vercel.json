@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "name": "etos-dashboard-v2",
+  "cleanUrls": true,
+  "trailingSlash": false
+}
