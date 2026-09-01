@@ -1,6 +1,9 @@
-/* ETOS ID PALU V2 — facilitator session UX guard. */
+/* ETOS ID PALU V2 — facilitator session UX + legacy parity guard. */
 (function () {
   'use strict';
+
+  var SUPABASE_URL = 'https://jrrmgfzfpcrjtyjqpaff.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_VyCXSeR2FaGERAoEUDU5DA_vMigqty3';
 
   function hasFacilitatorSession() {
     try {
@@ -18,14 +21,39 @@
     if (el) el.textContent = text;
   }
 
+  async function publicRest(path) {
+    var res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+      headers: { apikey: SUPABASE_KEY, Accept: 'application/json' }
+    });
+    var raw = await res.text();
+    var data = null;
+    try { data = raw ? JSON.parse(raw) : null; } catch (_) { data = null; }
+    if (!res.ok) throw new Error((data && data.message) || raw || ('Supabase HTTP ' + res.status));
+    return data;
+  }
+
+  function loadPublicActiveCount() {
+    publicRest('v_etos_v2_stats?select=awardees_active&limit=1').then(function (rows) {
+      var value = rows && rows[0] ? Number(rows[0].awardees_active || 0) : 0;
+      setText('cmd-active', String(value));
+    }).catch(function () {
+      if (typeof window.executeBackend === 'function') {
+        window.executeBackend('getDashboardStats', null, function (stats) {
+          if (stats && stats.aktif != null) setText('cmd-active', String(stats.aktif));
+        }, 'Gagal memuat jumlah Awardee aktif', { silent: true });
+      }
+    });
+  }
+
   function renderLockedCommandCenter() {
-    setText('cmd-active', '—');
+    setText('cmd-active', '…');
     setText('cmd-attention', '—');
     setText('cmd-overdue', '—');
     setText('cmd-momentum', '—');
     setText('cmd-high-attention', 'Masuk untuk melihat sinyal');
     setText('cmd-stale-coaching', 'Masuk untuk melihat tindak lanjut');
     setText('cmd-period-note', 'Command Center terlindungi. Buka sesi fasilitator untuk melihat data pendampingan.');
+    loadPublicActiveCount();
 
     var attention = document.getElementById('cmd-attention-list');
     if (attention) {
@@ -71,6 +99,65 @@
     };
   }
 
+  /*
+   * Restore the Tracking Alumni parity that was lost during the direct-Supabase
+   * cutover. The projection contains only the legacy fields intentionally shown
+   * by this view: contribution, CV link and evidence Drive link.
+   */
+  var originalAlumniView = window.loadAlumniView;
+  window.loadAlumniView = function () {
+    if (typeof window.toggleLoader === 'function') window.toggleLoader(true);
+    publicRest('v_etos_v2_alumni?select=*&order=name.asc').then(function (rows) {
+      var data = (rows || []).map(function (a) {
+        var gpa = a.latest_gpa == null || a.latest_gpa === '' ? null : Number(a.latest_gpa);
+        return {
+          id: String(a.id || ''),
+          nama: String(a.name || 'Unknown'),
+          kampus: String(a.university || '-'),
+          jurusan: String(a.major || '-'),
+          angkatan: a.cohort == null ? '-' : String(a.cohort),
+          status: String(a.status || 'Alumni'),
+          motto: String(a.motto || ''),
+          foto: String(a.photo_url || ''),
+          ipk: Number.isFinite(gpa) ? gpa.toFixed(2) : '0.00',
+          kontribusi: String(a.contribution || 'Belum bekerja/studi'),
+          cv: String(a.cv_link || ''),
+          gdrive: String(a.drive_link || ''),
+          portfolioTersedia: !!a.portfolio_available
+        };
+      });
+
+      window.globalAlumni = data;
+      var cohortSelect = document.getElementById('alumni-angkatan');
+      var campusSelect = document.getElementById('alumni-kampus');
+      if (cohortSelect && campusSelect) {
+        var currentCohortVal = cohortSelect.value;
+        var currentCampusVal = campusSelect.value;
+        var cohorts = [];
+        var campuses = [];
+        data.forEach(function (a) {
+          if (cohorts.indexOf(a.angkatan) === -1) cohorts.push(a.angkatan);
+          if (campuses.indexOf(a.kampus) === -1) campuses.push(a.kampus);
+        });
+        cohorts.sort();
+        campuses.sort();
+        cohortSelect.innerHTML = '<option value="">Semua Angkatan</option>';
+        cohorts.forEach(function (c) { cohortSelect.innerHTML += '<option value="' + c + '">Angkatan ' + c + '</option>'; });
+        cohortSelect.value = currentCohortVal;
+        campusSelect.innerHTML = '<option value="">Semua Kampus</option>';
+        campuses.forEach(function (c) { campusSelect.innerHTML += '<option value="' + c + '">' + c + '</option>'; });
+        campusSelect.value = currentCampusVal;
+      }
+      if (typeof window.renderAlumniGrid === 'function') window.renderAlumniGrid(data);
+    }).catch(function (err) {
+      console.error('[ETOS alumni parity]', err);
+      if (typeof window.showNotification === 'function') window.showNotification('Gagal memuat data Tracking Alumni: ' + (err.message || err), false);
+      if (typeof originalAlumniView === 'function') originalAlumniView.apply(window, arguments);
+    }).finally(function () {
+      if (typeof window.toggleLoader === 'function') window.toggleLoader(false);
+    });
+  };
+
   var originalPrefetch = window.prefetchDashboardViews;
   if (typeof originalPrefetch === 'function') {
     window.prefetchDashboardViews = function () {
@@ -80,7 +167,6 @@
       if (typeof window.executeBackend !== 'function') return;
       [
         { name: 'getAwardeeList', params: null },
-        { name: 'getAlumniList', params: null },
         { name: 'getAkademikList', params: null },
         { name: 'getAbsensiList', params: { periodeId: window.currentAbsensiPeriodId || '' } },
         { name: 'getPrestasiList', params: null }
@@ -93,7 +179,7 @@
   var originalSessionFailure = window.handleFacilitatorSessionFailure;
   if (typeof originalSessionFailure === 'function') {
     window.handleFacilitatorSessionFailure = function (message, retryAction, title) {
-      if (/sesi fasilitator diperlukan/i.test(String(message || ''))) {
+      if (/sesi fasilitator diperlukan|sesi akses berakhir|sesi admin berakhir/i.test(String(message || ''))) {
         try { sessionStorage.removeItem('etos_facilitator_access_token'); } catch (_) {}
         if (typeof window.openFacilitatorAccessModal === 'function') {
           window.openFacilitatorAccessModal(retryAction, title || 'Masukkan Sandi');
@@ -104,5 +190,5 @@
     };
   }
 
-  window.ETOS_SESSION_UX = { version: 'ETOS-V2-SESSION-UX-2026.09.01-1' };
+  window.ETOS_SESSION_UX = { version: 'ETOS-V2-SESSION-UX-2026.09.01-2-PARITY' };
 })();
