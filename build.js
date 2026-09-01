@@ -20,10 +20,21 @@ if (canonicalSha256 !== EXPECTED_CANONICAL_SHA256) throw new Error(`Canonical SH
 
 let html = canonicalBuffer.toString('utf8');
 
-/* Production semantic cleanup. The canonical bytes remain verified above. */
+/*
+ * Production semantic cleanup. Canonical source integrity is verified above;
+ * the deployed artifact intentionally removes historical demo behavior and
+ * stale Apps Script wording without modifying the archived canonical bytes.
+ */
 html = html.replace(
-  /    function simulateOfflineFallback\(funcName, successCallback\) \{[\s\S]*?\n    \}\n\n\n    function navigate\(viewName\) \{/,
-  `    function simulateOfflineFallback(funcName, successCallback) {\n        console.error('[ETOS] Legacy simulation disabled:', funcName);\n        if (typeof showNotification === 'function') showNotification('Backend ETOS tidak tersedia. Data simulasi dinonaktifkan.', false);\n    }\n\n\n    function navigate(viewName) {`
+  /    function simulateOfflineFallback\(funcName, successCallback\) \{[\s\S]*?\n    \}\n\n\n    function getFacilitatorAccessToken\(\) \{/,
+  `    function simulateOfflineFallback(funcName, successCallback) {\n        console.error('[ETOS] Legacy simulation disabled:', funcName);\n        if (typeof showNotification === 'function') showNotification('Backend ETOS tidak tersedia. Data simulasi dinonaktifkan.', false);\n    }\n\n\n    function getFacilitatorAccessToken() {`
+);
+
+/* The canonical radar contained fabricated Kajian/Tahsin/Tilawah values.
+   Keep only a neutral stub; ui-protected-actions.js installs the sourced radar. */
+html = html.replace(
+  /    function renderRadarAnalytics\(dataList\) \{[\s\S]*?\n    \}\n\n\n    function loadAwardeeList\(\) \{/,
+  `    function renderRadarAnalytics(dataList) {\n        console.info('[ETOS] Legacy simulated radar disabled; sourced metrics runtime will render this chart.');\n    }\n\n\n    function loadAwardeeList() {`
 );
 
 html = html
@@ -36,16 +47,36 @@ html = html
   .replace(/Simulasi Sukses: Foto profil diubah!/g, 'Backend ETOS tidak tersedia. Foto tidak disimpan.')
   .replace(/Simulasi Sukses: Fasilitator ter-update!/g, 'Backend ETOS tidak tersedia. Profil tidak disimpan.')
   .replace(/Simulasi: periode pembinaan berhasil ditambahkan\./g, 'Backend ETOS tidak tersedia. Periode tidak disimpan.')
+  .replace(/showNotification\("(Backend ETOS tidak tersedia\.[^"]*)", true\)/g, 'showNotification("$1", false)')
   .replace('admin@etosid.com', 'Masuk untuk melihat profil')
   .replace("data.motto || 'Maju terus berjuang untuk masa depan!'", "data.motto || 'Belum diisi'")
   .replace('Seluruh analisis berjalan di Apps Script tanpa API berbayar. Hasil tersimpan pada sheet Analisis_Otomatis.', 'Analisis berjalan di backend Supabase dan hasil tersimpan aman di database ETOS.')
   .replace('Form admin absensi hanya dapat digunakan dari deployment Google Apps Script.', 'Backend absensi tidak tersedia. Muat ulang halaman lalu coba lagi.')
-  .replace('Data IDP terbaru berhasil dibaca dari spreadsheet tim pusat.', 'Data IDP terbaru berhasil dibaca dari file pusat.')
-  .replace('Koneksi IDP gagal. Periksa akses akun deployment ke spreadsheet tim pusat.', 'Koneksi IDP pusat gagal. Coba refresh atau periksa koneksi server.')
+  .replace(/spreadsheet tim pusat/g, 'file pusat')
+  .replace(/Spreadsheet IDP Tim Pusat/g, 'File IDP Pusat')
+  .replace(/spreadsheet IDP tim pusat/g, 'file IDP pusat')
+  .replace(/spreadsheet pusat/g, 'file pusat')
+  .replace('Command Center diperbarui dari data lokal dan analisis terakhir.', 'Command Center diperbarui dari data Supabase dan analisis terakhir.')
+  .replace('Koneksi IDP gagal. Periksa akses akun deployment ke file pusat.', 'Koneksi IDP pusat gagal. Coba refresh atau periksa koneksi server.')
   .replace(
     `if (!found) {\n                    if (pctText) pctText.innerText = "0%";\n                    if (pctBar) pctBar.innerHTML = '<div class="h-full bg-slate-300 w-full"></div>';\n                    if (hText) hText.innerText = '0';\n                    if (iText) iText.innerText = '0';\n                    if (sText) sText.innerText = '0';\n                    if (aText) aText.innerText = '0';\n                    if (logList) logList.innerHTML = '<li class="italic text-slate-400">Tidak ada terekam</li>';\n                    return;\n                }`,
     `if (!found) {\n                    if (pctText) pctText.innerText = "—";\n                    if (pctBar) pctBar.innerHTML = '<div class="h-full bg-slate-100 w-full"></div>';\n                    if (hText) hText.innerText = '—';\n                    if (iText) iText.innerText = '—';\n                    if (sText) sText.innerText = '—';\n                    if (aText) aText.innerText = '—';\n                    if (logList) logList.innerHTML = '<li class="italic text-slate-400">Belum ada data absensi pada periode ini.</li>';\n                    return;\n                }`
   );
+
+/* If any known historical sample survives, fail the deployment rather than
+   ever publish a production artifact containing fabricated development data. */
+const forbiddenProductionMarkers = [
+  'ATO-SIMULASI',
+  'File IDP Pusat (Simulasi)',
+  "successCallback({ totalAwardee: 3, aktif: 2, warning: 1, avgIPK: \"3.72\" })",
+  'avgKajian = 80 - (idx * 5)',
+  'avgTahsin = 85 - (idx * 8)',
+  'avgTilawah = 75 - (idx * 4)',
+  "id: 'AWD-0001', nama: 'Moh. Royhan Lakoro', kampus: 'Universitas Tadulako', jurusan: 'Teknik Sipil'"
+];
+for (const marker of forbiddenProductionMarkers) {
+  if (html.includes(marker)) throw new Error(`Forbidden legacy simulation marker survived production cleanup: ${marker}`);
+}
 
 const failClosedPreflight = `<script>
 (function(){
@@ -73,5 +104,5 @@ fs.writeFileSync(path.join(__dirname, 'dist', 'index.html'), html, 'utf8');
 for (const file of ['supabase-direct.js','supabase-secure.js','ui-session-fix.js','ui-protected-actions.js','ui-runtime-polish.js']) fs.copyFileSync(path.join(__dirname, file), path.join(__dirname, 'dist', file));
 
 console.log(`[CANONICAL_ACTIVE] sourceBytes=${canonicalBuffer.length} sourceSha256=${canonicalSha256} outputBytes=${Buffer.byteLength(html, 'utf8')}`);
-console.log('[PRODUCTION_CLEANUP] legacy demo fallback disabled + misleading placeholders neutralized');
+console.log('[PRODUCTION_CLEANUP] embedded legacy demo data purged; misleading placeholders neutralized');
 console.log('[RUNTIME_BRIDGE] fail-closed preflight + Supabase runtimes before legacy scripts');
