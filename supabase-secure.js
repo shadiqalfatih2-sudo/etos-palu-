@@ -3,7 +3,7 @@
   'use strict';
   const URL='https://jrrmgfzfpcrjtyjqpaff.supabase.co/functions/v1/etos-secure-api';
   const KEY='sb_publishable_VyCXSeR2FaGERAoEUDU5DA_vMigqty3';
-  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH1';
+  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH2-PARITY';
   const baseRun=window.google&&window.google.script&&window.google.script.run;
   if(!baseRun){ console.error('[ETOS secure] base google.script.run shim not found'); return; }
 
@@ -12,7 +12,8 @@
     'getMentoringCases','getMentoringCommandCenter','getCohortDevelopmentAnalytics','getAwardee360',
     'getLatestAwardeeRuleAnalysis','saveMentoringCase','updateMentoringCase','saveCompetencyEvidence',
     'getAbsensiEntryOptions','saveAbsensiEntry','savePeriodePembinaan','saveCoaching',
-    'getFasilitatorProfile','saveFasilitatorProfile','getPeriodePembinaanList','getAbsensiList'
+    'getFasilitatorProfile','saveFasilitatorProfile','getPeriodePembinaanList','getAbsensiList',
+    'saveAwardee','saveAkademik','savePrestasi','saveOrganisasi','saveAlumniPortfolio','saveAwardeePhoto'
   ]);
   const ADMIN=new Set(['getAbsensiEntryOptions','saveAbsensiEntry','savePeriodePembinaan']);
   const PUBLIC=new Set(['getPeriodePembinaanList','getAbsensiList']);
