@@ -4,7 +4,7 @@
   const URL='https://jrrmgfzfpcrjtyjqpaff.supabase.co/functions/v1/etos-secure-api';
   const IDP_URL='https://jrrmgfzfpcrjtyjqpaff.supabase.co/functions/v1/etos-idp-live';
   const KEY='sb_publishable_VyCXSeR2FaGERAoEUDU5DA_vMigqty3';
-  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH8-LIVE-IDP';
+  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH9-LIVE-IDP';
   const baseRun=window.google&&window.google.script&&window.google.script.run;
   if(!baseRun){ console.error('[ETOS secure] base google.script.run shim not found'); return; }
 
@@ -89,7 +89,9 @@
     }
     const token=pickToken(name,payload);
     const endpoint=IDP.has(name)?IDP_URL:URL;
-    edge(name,payload||{},token,'',endpoint).then(d=>ok(success,d)).catch(e=>fail(success,failure,e));
+    let requestPayload=payload||{};
+    if(name==='getIDPOverview') requestPayload=Object.assign({},requestPayload,{forceRefresh:true});
+    edge(name,requestPayload,token,'',endpoint).then(d=>ok(success,d)).catch(e=>fail(success,failure,e));
   }
   function makeRunner(success,failure){
     return new Proxy({}, {get:function(_,prop){
