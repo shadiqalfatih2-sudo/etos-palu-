@@ -28,8 +28,9 @@
     };
   }
 
-  /* Full profile contains WA/email; never request it anonymously. */
+  /* Full profile and portfolio links contain personal data. */
   protectFunction('viewAwardeeDetail','Akses Detail Awardee');
+  protectFunction('loadAlumniView','Akses Alumni & Portfolio');
 
   /* Development records are facilitator-only. */
   protectFunction('loadCoachingView','Akses Coaching & IDP');
@@ -49,6 +50,70 @@
   protectFunction('submitCompetencyEvidence','Akses Evidence Kompetensi');
   protectFunction('submitMentoringCase','Akses Pendampingan');
   protectFunction('submitPeriodePembinaan','Akses Periode Pembinaan');
+
+  /*
+   * The old radar function contained simulated Kajian/Tahsin/Tilawah values.
+   * If a canvas exists in any legacy layout, render only metrics backed by data:
+   * latest GPA, technical IDP row coverage, and active-period attendance.
+   */
+  window.renderRadarAnalytics=function(dataList){
+    var ctx=document.getElementById('radarChart');
+    if(!ctx || typeof Chart==='undefined') return;
+    dataList=Array.isArray(dataList)?dataList:[];
+
+    function finish(attendanceItems){
+      try{
+        if(window.radarChartInstance) window.radarChartInstance.destroy();
+        var attendanceMap={};
+        (attendanceItems||[]).forEach(function(item){ attendanceMap[String(item.id||'').trim().toUpperCase()]=Number(item.pct); });
+        var groups={};
+        dataList.forEach(function(a){
+          var cohort=String(a.angkatan||'-');
+          var g=groups[cohort]||(groups[cohort]={ipk:[],idp:[],attendance:[]});
+          var ipk=Number(a.ipk);
+          if(Number.isFinite(ipk)) g.ipk.push(ipk*25);
+          if(a.progress!==null && a.progress!==undefined && a.progress!==''){
+            var p=Number(a.progress); if(Number.isFinite(p)) g.idp.push(p);
+          }
+          var att=attendanceMap[String(a.id||'').trim().toUpperCase()];
+          if(Number.isFinite(att)) g.attendance.push(att);
+        });
+        function mean(xs){ return xs.length?Math.round(xs.reduce(function(x,y){return x+y;},0)/xs.length*10)/10:null; }
+        var colors=[
+          {border:'#155e3f',bg:'rgba(21,94,63,.10)'},
+          {border:'#0284c7',bg:'rgba(2,132,199,.10)'},
+          {border:'#7c3aed',bg:'rgba(124,58,237,.10)'}
+        ];
+        var datasets=Object.keys(groups).sort().slice(0,3).map(function(cohort,idx){
+          var g=groups[cohort],c=colors[idx%colors.length];
+          return {label:'Angkatan '+cohort,data:[mean(g.ipk),mean(g.idp),mean(g.attendance)],borderColor:c.border,backgroundColor:c.bg,borderWidth:2,pointBackgroundColor:c.border};
+        });
+        window.radarChartInstance=new Chart(ctx,{
+          type:'radar',
+          data:{labels:['IPK rata-rata (skala 100)','Cakupan baris IDP','Kehadiran periode aktif'],datasets:datasets},
+          options:{responsive:true,maintainAspectRatio:false,spanGaps:false,scales:{r:{suggestedMin:0,suggestedMax:100}},plugins:{legend:{position:'bottom'}}}
+        });
+        var parent=ctx.parentNode;
+        if(parent && !document.getElementById('etos-real-metric-note')){
+          var note=document.createElement('p');
+          note.id='etos-real-metric-note';
+          note.className='mt-2 text-[10px] text-slate-400 font-semibold';
+          note.textContent='Hanya metrik bersumber data yang ditampilkan. Nilai yang tidak tersedia dibiarkan kosong, tanpa simulasi.';
+          parent.appendChild(note);
+        }
+      }catch(e){ console.warn('[ETOS real radar]',e); }
+    }
+
+    try{
+      window.google.script.run
+        .withSuccessHandler(function(response){
+          var payload=response&&response.success?response.data:response;
+          finish(payload&&payload.items?payload.items:[]);
+        })
+        .withFailureHandler(function(){ finish([]); })
+        .getAbsensiList({periodeId:''});
+    }catch(_){ finish([]); }
+  };
 
   /*
    * Canonical Awardee 360 expects `skor_kelengkapan`. Live V2 deliberately
@@ -85,12 +150,6 @@
     };
   }
 
-  /*
-   * A fresh Supabase database legitimately has no pembinaan period yet. The
-   * canonical form previously allowed users to fill statuses and only failed
-   * at submit time. Make the empty state explicit and route them to create the
-   * first period instead of presenting a broken-looking form.
-   */
   var originalInitAbsensi=window.initializeAbsensiEntryForm;
   if(typeof originalInitAbsensi==='function'){
     window.initializeAbsensiEntryForm=function(data){
@@ -107,7 +166,6 @@
           opt.textContent='Belum ada periode — tambahkan periode pembinaan';
           opt.selected=true;
           periodSelect.appendChild(opt);
-
           var banner=document.createElement('div');
           banner.id='etos-empty-period-banner';
           banner.className='mt-3 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-700 font-semibold leading-relaxed';
@@ -124,18 +182,14 @@
       var periodSelect=document.getElementById('entry-absensi-periode');
       if(!periodSelect || !String(periodSelect.value||'').trim()){
         if(e && typeof e.preventDefault==='function') e.preventDefault();
-        if(typeof window.showNotification==='function'){
-          window.showNotification('Belum ada Periode Pembinaan. Tambahkan periode terlebih dahulu.',false);
-        }
+        if(typeof window.showNotification==='function') window.showNotification('Belum ada Periode Pembinaan. Tambahkan periode terlebih dahulu.',false);
         if(typeof window.closeAbsensiEntry==='function') window.closeAbsensiEntry();
-        setTimeout(function(){
-          if(typeof window.toggleModal==='function') window.toggleModal('modal-add-periode');
-        },120);
+        setTimeout(function(){ if(typeof window.toggleModal==='function') window.toggleModal('modal-add-periode'); },120);
         return;
       }
       return originalSubmitAbsensi.apply(this,arguments);
     };
   }
 
-  window.ETOS_PROTECTED_ACTIONS={version:'ETOS-V2-PROTECTED-2026.09.02-4-OPERATIONS-UX'};
+  window.ETOS_PROTECTED_ACTIONS={version:'ETOS-V2-PROTECTED-2026.09.02-5-DATA-INTEGRITY'};
 })();
