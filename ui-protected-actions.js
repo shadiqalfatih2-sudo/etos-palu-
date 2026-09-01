@@ -48,6 +48,7 @@
   protectFunction('submitPortfolio','Akses Kelola Portofolio Alumni');
   protectFunction('submitCompetencyEvidence','Akses Evidence Kompetensi');
   protectFunction('submitMentoringCase','Akses Pendampingan');
+  protectFunction('submitPeriodePembinaan','Akses Periode Pembinaan');
 
   /*
    * Canonical Awardee 360 expects `skor_kelengkapan`. Live V2 deliberately
@@ -84,5 +85,57 @@
     };
   }
 
-  window.ETOS_PROTECTED_ACTIONS={version:'ETOS-V2-PROTECTED-2026.09.02-3-LIVE-IDP-360'};
+  /*
+   * A fresh Supabase database legitimately has no pembinaan period yet. The
+   * canonical form previously allowed users to fill statuses and only failed
+   * at submit time. Make the empty state explicit and route them to create the
+   * first period instead of presenting a broken-looking form.
+   */
+  var originalInitAbsensi=window.initializeAbsensiEntryForm;
+  if(typeof originalInitAbsensi==='function'){
+    window.initializeAbsensiEntryForm=function(data){
+      data=data||{};
+      originalInitAbsensi.call(this,data);
+      try{
+        var periodSelect=document.getElementById('entry-absensi-periode');
+        var oldBanner=document.getElementById('etos-empty-period-banner');
+        if(oldBanner) oldBanner.remove();
+        if(periodSelect && (!data.periods || !data.periods.length)){
+          periodSelect.innerHTML='';
+          var opt=document.createElement('option');
+          opt.value='';
+          opt.textContent='Belum ada periode — tambahkan periode pembinaan';
+          opt.selected=true;
+          periodSelect.appendChild(opt);
+
+          var banner=document.createElement('div');
+          banner.id='etos-empty-period-banner';
+          banner.className='mt-3 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-700 font-semibold leading-relaxed';
+          banner.textContent='Absensi membutuhkan Periode Pembinaan. Tambahkan periode pertama terlebih dahulu, lalu buka kembali form absensi.';
+          periodSelect.parentNode.appendChild(banner);
+        }
+      }catch(e){ console.warn('[ETOS absensi empty period]',e); }
+    };
+  }
+
+  var originalSubmitAbsensi=window.submitAbsensiEntry;
+  if(typeof originalSubmitAbsensi==='function'){
+    window.submitAbsensiEntry=function(e){
+      var periodSelect=document.getElementById('entry-absensi-periode');
+      if(!periodSelect || !String(periodSelect.value||'').trim()){
+        if(e && typeof e.preventDefault==='function') e.preventDefault();
+        if(typeof window.showNotification==='function'){
+          window.showNotification('Belum ada Periode Pembinaan. Tambahkan periode terlebih dahulu.',false);
+        }
+        if(typeof window.closeAbsensiEntry==='function') window.closeAbsensiEntry();
+        setTimeout(function(){
+          if(typeof window.toggleModal==='function') window.toggleModal('modal-add-periode');
+        },120);
+        return;
+      }
+      return originalSubmitAbsensi.apply(this,arguments);
+    };
+  }
+
+  window.ETOS_PROTECTED_ACTIONS={version:'ETOS-V2-PROTECTED-2026.09.02-4-OPERATIONS-UX'};
 })();
