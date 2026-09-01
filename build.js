@@ -53,9 +53,10 @@ if (!html.includes('/supabase-direct.js')) {
 // wrap already-defined global functions without changing the canonical payload.
 const postRuntime = [
   '    <script src="/ui-session-fix.js"></script>',
-  '    <script src="/ui-protected-actions.js"></script>'
+  '    <script src="/ui-protected-actions.js"></script>',
+  '    <script src="/ui-runtime-polish.js"></script>'
 ].join('\n');
-if (!html.includes('/ui-session-fix.js') || !html.includes('/ui-protected-actions.js')) {
+if (!html.includes('/ui-runtime-polish.js')) {
   if (!html.includes('</body>')) throw new Error('Canonical HTML has no </body> element.');
   html = html.replace('</body>', postRuntime + '\n</body>');
 }
@@ -67,7 +68,8 @@ fs.copyFileSync(path.join(__dirname, 'supabase-direct.js'), path.join(__dirname,
 fs.copyFileSync(path.join(__dirname, 'supabase-secure.js'), path.join(__dirname, 'dist', 'supabase-secure.js'));
 fs.copyFileSync(path.join(__dirname, 'ui-session-fix.js'), path.join(__dirname, 'dist', 'ui-session-fix.js'));
 fs.copyFileSync(path.join(__dirname, 'ui-protected-actions.js'), path.join(__dirname, 'dist', 'ui-protected-actions.js'));
+fs.copyFileSync(path.join(__dirname, 'ui-runtime-polish.js'), path.join(__dirname, 'dist', 'ui-runtime-polish.js'));
 
 console.log(`[CANONICAL_ACTIVE] sourceBytes=${canonicalBuffer.length} sourceSha256=${canonicalSha256} outputBytes=${Buffer.byteLength(html, 'utf8')}`);
 console.log('[RUNTIME_BRIDGE] /supabase-direct.js + /supabase-secure.js injected before legacy scripts');
-console.log('[SESSION_UX] /ui-session-fix.js + /ui-protected-actions.js injected after canonical dashboard script');
+console.log('[SESSION_UX] /ui-session-fix.js + /ui-protected-actions.js + /ui-runtime-polish.js injected after canonical dashboard script');
