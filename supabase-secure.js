@@ -3,7 +3,7 @@
   'use strict';
   const URL='https://jrrmgfzfpcrjtyjqpaff.supabase.co/functions/v1/etos-secure-api';
   const KEY='sb_publishable_VyCXSeR2FaGERAoEUDU5DA_vMigqty3';
-  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH2-PARITY';
+  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH3-PARITY';
   const baseRun=window.google&&window.google.script&&window.google.script.run;
   if(!baseRun){ console.error('[ETOS secure] base google.script.run shim not found'); return; }
 
@@ -21,13 +21,27 @@
   const LOGOUT=new Set(['logoutFacilitatorAccess','logoutAbsensiAdmin']);
 
   function sessionGet(key){ try{return sessionStorage.getItem(key)||'';}catch(_){return '';} }
+  function sessionSetBoth(token){
+    try{
+      if(token){
+        sessionStorage.setItem('etos_facilitator_access_token',String(token));
+        sessionStorage.setItem('etos_absensi_admin_token',String(token));
+      }
+    }catch(_){}
+  }
+  function sessionClearBoth(){
+    try{
+      sessionStorage.removeItem('etos_facilitator_access_token');
+      sessionStorage.removeItem('etos_absensi_admin_token');
+    }catch(_){}
+  }
   function pickToken(name,p){
     if(p&&typeof p==='object'){
       if(p.token) return String(p.token);
       if(p.facilitator_token) return String(p.facilitator_token);
     }
     if(PUBLIC.has(name)) return '';
-    return ADMIN.has(name)?sessionGet('etos_absensi_admin_token'):sessionGet('etos_facilitator_access_token');
+    return ADMIN.has(name)?(sessionGet('etos_absensi_admin_token')||sessionGet('etos_facilitator_access_token')):(sessionGet('etos_facilitator_access_token')||sessionGet('etos_absensi_admin_token'));
   }
   async function edge(action,payload,token,pin){
     const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),15000);
@@ -58,11 +72,11 @@
   function runSecure(name,payload,success,failure){
     if(LOGIN.has(name)){
       const pin=typeof payload==='string'?payload:(payload&&payload.pin)||'';
-      edge('login',{},'',pin).then(d=>ok(success,d)).catch(e=>fail(success,failure,e)); return;
+      edge('login',{},'',pin).then(function(d){ sessionSetBoth(d&&d.token); ok(success,d); }).catch(e=>fail(success,failure,e)); return;
     }
     if(LOGOUT.has(name)){
       const token=(typeof payload==='string'?payload:'')||pickToken(name,payload);
-      edge('logout',{},token,'').then(d=>ok(success,d||{})).catch(e=>fail(success,failure,e)); return;
+      edge('logout',{},token,'').then(function(d){ sessionClearBoth(); ok(success,d||{}); }).catch(e=>fail(success,failure,e)); return;
     }
     const token=pickToken(name,payload);
     edge(name,payload||{},token,'').then(d=>ok(success,d)).catch(e=>fail(success,failure,e));
