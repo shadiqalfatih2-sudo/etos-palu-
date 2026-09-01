@@ -36,21 +36,44 @@ if (canonicalSha256 !== EXPECTED_CANONICAL_SHA256) {
 }
 
 let html = canonicalBuffer.toString('utf8');
+
+/*
+ * The canonical UI still contains historical demo branches. Install a tiny
+ * fail-closed google.script.run bridge BEFORE the canonical script executes.
+ * supabase-direct.js replaces it during normal operation. If either runtime
+ * script ever fails to load, legacy code still sees a server bridge and gets
+ * explicit failures instead of entering its old simulated-success branches.
+ */
+const failClosedPreflight = `<script>
+(function(){
+  if(window.google&&window.google.script&&window.google.script.run)return;
+  var message='Backend ETOS tidak tersedia. Data simulasi dinonaktifkan.';
+  function make(success,failure){
+    return new Proxy({}, {get:function(_,prop){
+      if(prop==='withSuccessHandler')return function(fn){return make(fn,failure);};
+      if(prop==='withFailureHandler')return function(fn){return make(success,fn);};
+      return function(){setTimeout(function(){var e=new Error(message);if(typeof failure==='function')failure(e);else if(typeof success==='function')success({success:false,error:message});else console.error('[ETOS preflight]',message);},0);};
+    }});
+  }
+  window.google=window.google||{};
+  window.google.script=window.google.script||{};
+  window.google.script.run=make(null,null);
+  window.__ETOS_FAIL_CLOSED_PREFLIGHT__=true;
+})();
+</script>`;
+
 const runtimeBridge = [
+  failClosedPreflight,
   '<script src="/supabase-direct.js"></script>',
   '<script src="/supabase-secure.js"></script>'
 ].join('\n    ');
 if (!html.includes('<head>')) throw new Error('Canonical HTML has no <head> element.');
 if (!html.includes('/supabase-direct.js')) {
-  // Both blocking scripts are placed before legacy JavaScript. The direct shim creates
-  // google.script.run first, then the secure overlay replaces protected methods only.
-  html = html.replace('<head>', '<head>\n    <!-- ETOS V2: Vercel -> Supabase compatibility runtime -->\n    ' + runtimeBridge);
+  html = html.replace('<head>', '<head>\n    <!-- ETOS V2: fail-closed preflight + Vercel -> Supabase runtime -->\n    ' + runtimeBridge);
 } else if (!html.includes('/supabase-secure.js')) {
   html = html.replace('<script src="/supabase-direct.js"></script>', runtimeBridge);
 }
 
-// These guards must load after the canonical inline dashboard script so they can
-// wrap already-defined global functions without changing the canonical payload.
 const postRuntime = [
   '    <script src="/ui-session-fix.js"></script>',
   '    <script src="/ui-protected-actions.js"></script>',
@@ -71,5 +94,5 @@ fs.copyFileSync(path.join(__dirname, 'ui-protected-actions.js'), path.join(__dir
 fs.copyFileSync(path.join(__dirname, 'ui-runtime-polish.js'), path.join(__dirname, 'dist', 'ui-runtime-polish.js'));
 
 console.log(`[CANONICAL_ACTIVE] sourceBytes=${canonicalBuffer.length} sourceSha256=${canonicalSha256} outputBytes=${Buffer.byteLength(html, 'utf8')}`);
-console.log('[RUNTIME_BRIDGE] /supabase-direct.js + /supabase-secure.js injected before legacy scripts');
-console.log('[SESSION_UX] /ui-session-fix.js + /ui-protected-actions.js + /ui-runtime-polish.js injected after canonical dashboard script');
+console.log('[RUNTIME_BRIDGE] fail-closed preflight + /supabase-direct.js + /supabase-secure.js before legacy scripts');
+console.log('[SESSION_UX] /ui-session-fix.js + /ui-protected-actions.js + /ui-runtime-polish.js after canonical dashboard script');
