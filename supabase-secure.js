@@ -3,7 +3,7 @@
   'use strict';
   const URL='https://jrrmgfzfpcrjtyjqpaff.supabase.co/functions/v1/etos-secure-api';
   const KEY='sb_publishable_VyCXSeR2FaGERAoEUDU5DA_vMigqty3';
-  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH5-ASSESSMENT-RULES';
+  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH6-ASSESSMENT-PUBLIC';
   const baseRun=window.google&&window.google.script&&window.google.script.run;
   if(!baseRun){ console.error('[ETOS secure] base google.script.run shim not found'); return; }
 
@@ -19,7 +19,7 @@
   ]);
   const ADMIN=new Set(['getAbsensiEntryOptions','saveAbsensiEntry','savePeriodePembinaan']);
   const PUBLIC=new Set([
-    'getPeriodePembinaanList','getAbsensiList',
+    'getPeriodePembinaanList','getAbsensiList','getAssessmentHub','saveAssessment',
     'getPublicKajianReflectionForm','verifyKajianReflectionParticipant','submitKajianReflection'
   ]);
   const LOGIN=new Set(['verifyFacilitatorAccess','verifyAbsensiAdminPin']);
