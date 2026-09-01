@@ -31,7 +31,9 @@
   /* Full profile contains WA/email; never request it anonymously. */
   protectFunction('viewAwardeeDetail','Akses Detail Awardee');
 
-  /* Assessment data and writes are part of facilitator development records. */
+  /* Coaching, IDP and assessment contain private development records. */
+  protectFunction('loadCoachingView','Akses Coaching & IDP');
+  protectFunction('refreshIDPData','Akses Refresh IDP Pusat');
   protectFunction('loadAssessmentView','Akses Asesmen & Development');
   protectFunction('submitCurrentAssessment','Akses Simpan Asesmen');
 
@@ -45,5 +47,5 @@
   protectFunction('submitCompetencyEvidence','Akses Evidence Kompetensi');
   protectFunction('submitMentoringCase','Akses Pendampingan');
 
-  window.ETOS_PROTECTED_ACTIONS={version:'ETOS-V2-PROTECTED-2026.09.01-1'};
+  window.ETOS_PROTECTED_ACTIONS={version:'ETOS-V2-PROTECTED-2026.09.01-2-LIVE-IDP'};
 })();
