@@ -99,11 +99,7 @@
     };
   }
 
-  /*
-   * Restore the Tracking Alumni parity that was lost during the direct-Supabase
-   * cutover. The projection contains only the legacy fields intentionally shown
-   * by this view: contribution, CV link and evidence Drive link.
-   */
+  /* Restore Tracking Alumni data parity from the safe public projection. */
   var originalAlumniView = window.loadAlumniView;
   window.loadAlumniView = function () {
     if (typeof window.toggleLoader === 'function') window.toggleLoader(true);
@@ -119,7 +115,7 @@
           status: String(a.status || 'Alumni'),
           motto: String(a.motto || ''),
           foto: String(a.photo_url || ''),
-          ipk: Number.isFinite(gpa) ? gpa.toFixed(2) : '0.00',
+          ipk: Number.isFinite(gpa) ? gpa.toFixed(2) : '-',
           kontribusi: String(a.contribution || 'Belum bekerja/studi'),
           cv: String(a.cv_link || ''),
           gdrive: String(a.drive_link || ''),
@@ -158,6 +154,85 @@
     });
   };
 
+  /*
+   * Canonical legacy used generated percentages for Progress/Kajian/Tahsin/Tilawah.
+   * V2 must never present synthetic values as operational data. Until those sources
+   * exist, render only the real GPA cohort metric available from Supabase.
+   */
+  window.renderRadarAnalytics = function (dataList) {
+    var ctx = document.getElementById('radarChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    try {
+      if (window.radarChartInstance && typeof window.radarChartInstance.destroy === 'function') window.radarChartInstance.destroy();
+    } catch (_) {}
+
+    var grouped = {};
+    (dataList || []).forEach(function (a) {
+      var cohort = String(a.angkatan || '-');
+      var gpa = Number(String(a.ipk == null ? '' : a.ipk).replace(',', '.'));
+      if (!Number.isFinite(gpa)) return;
+      if (!grouped[cohort]) grouped[cohort] = [];
+      grouped[cohort].push(gpa);
+    });
+    var labels = Object.keys(grouped).sort();
+    var values = labels.map(function (key) {
+      var xs = grouped[key];
+      return xs.length ? Number((xs.reduce(function (a, b) { return a + b; }, 0) / xs.length).toFixed(2)) : null;
+    });
+
+    if (!labels.length) {
+      try {
+        var parent = ctx.parentElement;
+        if (parent && !parent.querySelector('[data-etos-no-analytics]')) {
+          var note = document.createElement('div');
+          note.setAttribute('data-etos-no-analytics', '1');
+          note.className = 'h-full min-h-[220px] flex items-center justify-center text-center text-sm text-slate-400 p-6';
+          note.textContent = 'Belum ada data nyata yang cukup untuk analitik perkembangan.';
+          ctx.style.display = 'none';
+          parent.appendChild(note);
+        }
+      } catch (_) {}
+      return;
+    }
+
+    ctx.style.display = '';
+    var oldNote = ctx.parentElement && ctx.parentElement.querySelector('[data-etos-no-analytics]');
+    if (oldNote) oldNote.remove();
+    window.radarChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels.map(function (c) { return 'Angkatan ' + c; }),
+        datasets: [{ label: 'Rata-rata IPK aktual', data: values, borderWidth: 1 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true, suggestedMax: 4, max: 4 } },
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: { callbacks: { label: function (ctx) { return 'IPK ' + Number(ctx.raw || 0).toFixed(2); } } }
+        }
+      }
+    });
+  };
+
+  /* Disable all hard-coded legacy demo data when the live backend fails. */
+  window.simulateOfflineFallback = function (funcName, successCallback) {
+    console.error('[ETOS V2] Backend tidak tersedia; data simulasi legacy dinonaktifkan:', funcName);
+    if (typeof window.showNotification === 'function') {
+      window.showNotification('Koneksi data V2 gagal. Data simulasi tidak ditampilkan.', false);
+    }
+    var empty;
+    if (funcName === 'getDashboardStats') empty = { totalAwardee: '—', aktif: '—', warning: '—', avgIPK: '—', sourceUnavailable: true };
+    else if (funcName === 'getIDPOverview') empty = { sourceName: 'Koneksi sumber IDP tidak tersedia', totalActive: 0, connected: 0, missing: 0, items: [], sourceUnavailable: true };
+    else if (funcName === 'getAbsensiList') empty = { items: [], periods: [], selectedPeriod: null, legacyMode: false, unresolvedTahsin: 0, sourceUnavailable: true };
+    else if (funcName === 'getAssessmentHub') empty = { awardees: [], records: {}, sourceUnavailable: true };
+    else if (/List$|FeaturedAwardees|MentoringCases/.test(funcName)) empty = [];
+    else if (funcName === 'getLatestAwardeeRuleAnalysis') empty = { available: false, sourceUnavailable: true };
+    else empty = { sourceUnavailable: true };
+    if (typeof successCallback === 'function') successCallback(empty);
+  };
+
   var originalPrefetch = window.prefetchDashboardViews;
   if (typeof originalPrefetch === 'function') {
     window.prefetchDashboardViews = function () {
@@ -180,7 +255,10 @@
   if (typeof originalSessionFailure === 'function') {
     window.handleFacilitatorSessionFailure = function (message, retryAction, title) {
       if (/sesi fasilitator diperlukan|sesi akses berakhir|sesi admin berakhir/i.test(String(message || ''))) {
-        try { sessionStorage.removeItem('etos_facilitator_access_token'); } catch (_) {}
+        try {
+          sessionStorage.removeItem('etos_facilitator_access_token');
+          sessionStorage.removeItem('etos_absensi_admin_token');
+        } catch (_) {}
         if (typeof window.openFacilitatorAccessModal === 'function') {
           window.openFacilitatorAccessModal(retryAction, title || 'Masukkan Sandi');
           return true;
@@ -190,5 +268,6 @@
     };
   }
 
-  window.ETOS_SESSION_UX = { version: 'ETOS-V2-SESSION-UX-2026.09.01-2-PARITY' };
+  window.ETOS_NO_DUMMY = true;
+  window.ETOS_SESSION_UX = { version: 'ETOS-V2-SESSION-UX-2026.09.01-3-NO-DUMMY' };
 })();
