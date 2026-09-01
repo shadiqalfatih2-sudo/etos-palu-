@@ -3,16 +3,17 @@
   'use strict';
   const URL='https://jrrmgfzfpcrjtyjqpaff.supabase.co/functions/v1/etos-secure-api';
   const KEY='sb_publishable_VyCXSeR2FaGERAoEUDU5DA_vMigqty3';
-  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH4-PARITY';
+  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH5-ASSESSMENT-RULES';
   const baseRun=window.google&&window.google.script&&window.google.script.run;
   if(!baseRun){ console.error('[ETOS secure] base google.script.run shim not found'); return; }
 
   const SECURE=new Set([
     'getIDPDetail','getCoachingList','getFacilitatorAssessmentHub','getFacilitatorAssessmentReport',
     'getMentoringCases','getMentoringCommandCenter','getCohortDevelopmentAnalytics','getAwardee360',
-    'getLatestAwardeeRuleAnalysis','saveMentoringCase','updateMentoringCase','saveCompetencyEvidence',
+    'getLatestAwardeeRuleAnalysis','analyzeAwardeeWithRules','saveMentoringCase','updateMentoringCase','saveCompetencyEvidence',
     'getAbsensiEntryOptions','saveAbsensiEntry','savePeriodePembinaan','saveCoaching',
     'getFasilitatorProfile','saveFasilitatorProfile','getPeriodePembinaanList','getAbsensiList',
+    'getAssessmentHub','saveAssessment',
     'saveAwardee','saveAkademik','savePrestasi','saveOrganisasi','saveAlumniPortfolio','saveAwardeePhoto',
     'getPublicKajianReflectionForm','verifyKajianReflectionParticipant','submitKajianReflection'
   ]);
