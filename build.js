@@ -3,6 +3,8 @@ const path = require('path');
 const zlib = require('zlib');
 const crypto = require('crypto');
 
+const EXPECTED_CANONICAL_BYTES = 340486;
+const EXPECTED_CANONICAL_SHA256 = '899ee400032119272be76d1965d85e54c77ea7b45164dde3b5a43a61f8ba3cc5';
 const canonicalParts = [
   'canonical.00.b64',
   'canonical.01.b64',
@@ -17,41 +19,35 @@ const canonicalParts = [
   'canonical.07b.b64'
 ];
 
-const canonicalPartText = canonicalParts.map((file) => fs.readFileSync(path.join(__dirname, file), 'utf8').replace(/\s+/g, ''));
-canonicalPartText.forEach((part, i) => {
-  console.log(`[CANONICAL_PART] ${canonicalParts[i]} chars=${part.length} first=${part.slice(0, 12)} last=${part.slice(-12)} padding=${(part.match(/=/g) || []).length}`);
-});
+const canonicalB64 = canonicalParts
+  .map((file) => fs.readFileSync(path.join(__dirname, file), 'utf8'))
+  .join('')
+  .replace(/\s+/g, '');
 
-const canonicalB64 = canonicalPartText.join('');
 const canonicalCompressed = Buffer.from(canonicalB64, 'base64');
-console.log(`[CANONICAL_VERIFY] base64Chars=${canonicalB64.length} decodedBytes=${canonicalCompressed.length} gzipMagic=${canonicalCompressed.slice(0, 3).toString('hex')} tail=${canonicalCompressed.slice(-12).toString('hex')}`);
+const canonicalBuffer = zlib.gunzipSync(canonicalCompressed);
+const canonicalSha256 = crypto.createHash('sha256').update(canonicalBuffer).digest('hex');
 
-try {
-  const canonicalBuffer = zlib.gunzipSync(canonicalCompressed);
-  const canonicalSha256 = crypto.createHash('sha256').update(canonicalBuffer).digest('hex');
-  console.log(`[CANONICAL_GUNZIP_OK] htmlBytes=${canonicalBuffer.length} sha256=${canonicalSha256}`);
-} catch (err) {
-  console.error(`[CANONICAL_GUNZIP_ERROR] ${err.code || ''} ${err.message}`);
-  try {
-    // Standard gzip header is 10 bytes and trailer is 8 bytes for this payload.
-    // Raw inflate intentionally ignores the gzip CRC/ISIZE trailer so we can
-    // determine whether only the trailer is bad or the compressed stream itself.
-    const rawDeflate = canonicalCompressed.subarray(10, Math.max(10, canonicalCompressed.length - 8));
-    const recovered = zlib.inflateRawSync(rawDeflate);
-    const recoveredSha = crypto.createHash('sha256').update(recovered).digest('hex');
-    console.log(`[CANONICAL_RAW_INFLATE_OK] htmlBytes=${recovered.length} sha256=${recoveredSha}`);
-  } catch (rawErr) {
-    console.error(`[CANONICAL_RAW_INFLATE_ERROR] ${rawErr.code || ''} ${rawErr.message}`);
-  }
+if (canonicalBuffer.length !== EXPECTED_CANONICAL_BYTES) {
+  throw new Error(`Canonical byte-size mismatch: expected ${EXPECTED_CANONICAL_BYTES}, got ${canonicalBuffer.length}`);
+}
+if (canonicalSha256 !== EXPECTED_CANONICAL_SHA256) {
+  throw new Error(`Canonical SHA-256 mismatch: expected ${EXPECTED_CANONICAL_SHA256}, got ${canonicalSha256}`);
 }
 
-// Keep the known-good production UI active during diagnostics.
-const parts = ['ui.00.part', 'ui.01.part', 'ui.02.part', 'ui.03.part'];
-const html = parts.map((file) => fs.readFileSync(path.join(__dirname, file), 'utf8')).join('');
+let html = canonicalBuffer.toString('utf8');
+const runtimeBridge = '<script src="/supabase-direct.js"></script>';
+if (!html.includes('<head>')) throw new Error('Canonical HTML has no <head> element.');
+if (!html.includes('/supabase-direct.js')) {
+  // Blocking script in the first position of <head>: the compatibility shim must
+  // exist before any legacy JavaScript checks for google.script.run.
+  html = html.replace('<head>', '<head>\n    <!-- ETOS V2: Vercel -> Supabase compatibility runtime -->\n    ' + runtimeBridge);
+}
 
 fs.rmSync(path.join(__dirname, 'dist'), { recursive: true, force: true });
 fs.mkdirSync(path.join(__dirname, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(__dirname, 'dist', 'index.html'), html, 'utf8');
 fs.copyFileSync(path.join(__dirname, 'supabase-direct.js'), path.join(__dirname, 'dist', 'supabase-direct.js'));
 
-console.log(`ETOS V2 diagnostic build complete: ${Buffer.byteLength(html, 'utf8')} bytes`);
+console.log(`[CANONICAL_ACTIVE] sourceBytes=${canonicalBuffer.length} sourceSha256=${canonicalSha256} outputBytes=${Buffer.byteLength(html, 'utf8')}`);
+console.log('[RUNTIME_BRIDGE] /supabase-direct.js injected before legacy scripts');
