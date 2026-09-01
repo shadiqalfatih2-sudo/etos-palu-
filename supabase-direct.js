@@ -8,7 +8,7 @@
 
   const SUPABASE_URL = 'https://jrrmgfzfpcrjtyjqpaff.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_VyCXSeR2FaGERAoEUDU5DA_vMigqty3';
-  const DIRECT_VERSION = 'ETOS-V2-DIRECT-2026.09.02-DATA-INTEGRITY';
+  const DIRECT_VERSION = 'ETOS-V2-DIRECT-2026.09.02-DATA-INTEGRITY2';
   const CACHE_MS = 45000;
   const memory = { bootstrap: null, savedAt: 0, inflight: null, lastMs: null };
 
@@ -121,23 +121,25 @@
 
   function mapAcademic(r) {
     const g = num(r.gpa);
+    const ips = num(r.ips);
     const semester = clean(r.semester || r.semester_number || r.semester_raw) || '-';
     return {
-      id: clean(r.id),
+      id: clean(r.id || r.academic_code),
       awdId: clean(r.awardee_code),
       nama: clean(r.name) || 'Unknown',
       angkatan: clean(r.cohort),
       smt: semester,
       semester: semester,
-      ips: '-',
+      sks: r.sks == null || r.sks === '' ? '-' : String(r.sks),
+      ips: ips == null ? '-' : ips.toFixed(2),
       ipk: g == null ? '-' : g.toFixed(2),
-      status: '-'
+      status: clean(r.status) || '-'
     };
   }
 
   function mapAchievement(r) {
     return {
-      id: clean(r.id), awdId: clean(r.awardee_code), nama: clean(r.name) || 'Unknown',
+      id: clean(r.id || r.achievement_code), awdId: clean(r.awardee_code), nama: clean(r.name) || 'Unknown',
       prestasi: clean(r.achievement_name) || '-', penyelenggara: clean(r.organizer),
       thn: clean(r.achievement_year) || '-', tahun: clean(r.achievement_year) || '-',
       tingkat: clean(r.level) || '-', kategori: clean(r.category)
@@ -145,7 +147,8 @@
   }
 
   function mapOrganization(r) {
-    const start = clean(r.start_year), end = clean(r.end_year);
+    const start = clean(r.start_year);
+    const end = clean(r.end_year_raw || r.end_year);
     const year = start && end ? (start + ' - ' + end) : (start || end || '-');
     return {
       id: clean(r.organization_code || r.id), awdId: clean(r.awardee_code),
