@@ -4,13 +4,13 @@
   const URL='https://jrrmgfzfpcrjtyjqpaff.supabase.co/functions/v1/etos-secure-api';
   const IDP_URL='https://jrrmgfzfpcrjtyjqpaff.supabase.co/functions/v1/etos-idp-live';
   const KEY='sb_publishable_VyCXSeR2FaGERAoEUDU5DA_vMigqty3';
-  const VERSION='ETOS-V2-SECURE-2026.09.01-AUTH9-LIVE-IDP';
+  const VERSION='ETOS-V2-SECURE-2026.09.02-AUTH10-ALUMNI';
   const baseRun=window.google&&window.google.script&&window.google.script.run;
   if(!baseRun){ console.error('[ETOS secure] base google.script.run shim not found'); return; }
 
   const IDP=new Set(['getIDPOverview','getIDPDetail']);
   const SECURE=new Set([
-    'getAwardeeProfile','getIDPOverview','getIDPDetail','getCoachingList','getFacilitatorAssessmentHub','getFacilitatorAssessmentReport',
+    'getAwardeeProfile','getAlumniList','getIDPOverview','getIDPDetail','getCoachingList','getFacilitatorAssessmentHub','getFacilitatorAssessmentReport',
     'getMentoringCases','getMentoringCommandCenter','getCohortDevelopmentAnalytics','getAwardee360',
     'getLatestAwardeeRuleAnalysis','analyzeAwardeeWithRules','saveMentoringCase','updateMentoringCase','saveCompetencyEvidence',
     'getAbsensiEntryOptions','saveAbsensiEntry','savePeriodePembinaan','saveCoaching',
