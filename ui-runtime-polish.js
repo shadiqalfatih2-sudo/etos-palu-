@@ -1,4 +1,4 @@
-/* ETOS V2 — Batch 7 runtime polish: cache coherence + mobile ergonomics + truthful empty states. */
+/* ETOS V2 — runtime polish: cache coherence + mobile ergonomics + truthful source states. */
 (function(){
   'use strict';
 
@@ -53,6 +53,28 @@
     if(!hasSession){if(topName)topName.textContent='Profil Fasilitator';if(topEmail)topEmail.textContent='Masuk untuk melihat profil';}
   }catch(e){console.warn('[ETOS facilitator placeholder]',e);}
 
+  /* Awardee 360 must distinguish authenticated live access, transition access, and server cache. */
+  var previousRender360=window.renderAwardee360;
+  if(typeof previousRender360==='function'){
+    window.renderAwardee360=function(data){
+      var result=previousRender360.apply(this,arguments);
+      try{
+        var idp=(data&&data.idp)||{};
+        var root=document.getElementById('awardee-360-content');
+        if(!root)return result;
+        var label=idp.liveAuthenticated?'Cakupan baris terisi • LIVE Authenticated':
+          idp.transitionSource?'Cakupan baris terisi • LIVE Transition':
+          idp.liveSynced?'Cakupan baris terisi • LIVE':
+          'Cakupan baris terisi • Cache Server';
+        Array.prototype.forEach.call(root.querySelectorAll('p'),function(p){
+          var text=(p.textContent||'').trim();
+          if(/^Cakupan baris terisi/.test(text)||text==='Kelengkapan elemen terdeteksi') p.textContent=label;
+        });
+      }catch(e){console.warn('[ETOS IDP source label]',e);}
+      return result;
+    };
+  }
+
   /* Small-screen forms: avoid squeezed columns and iOS input zoom. */
   var style=document.createElement('style');
   style.id='etos-batch7-responsive-polish';
@@ -74,5 +96,5 @@
 }';
   document.head.appendChild(style);
 
-  window.ETOS_RUNTIME_POLISH={version:'ETOS-V2-POLISH-2026.09.02-BATCH7-ACCEPTANCE'};
+  window.ETOS_RUNTIME_POLISH={version:'ETOS-V2-POLISH-2026.09.02-BATCH10-IDP-SOURCE-MODES'};
 })();
