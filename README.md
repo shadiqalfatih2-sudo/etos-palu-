@@ -34,6 +34,8 @@ When Google service-account credentials are configured, the Edge Function does *
 
 Public GET access to the IDP live endpoint is disabled. POST requests require a valid facilitator session.
 
+The Google Drive file identifier is not stored in browser code or public GitHub source. By default it is read from the RLS-protected `etos_server_settings` table. `GOOGLE_DRIVE_SOURCE_ID` is supported only as an optional server-side environment override.
+
 See [SECURITY.md](SECURITY.md) for the final Google Drive lockdown procedure.
 
 ## Deployment
