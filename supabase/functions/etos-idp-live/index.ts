@@ -11,12 +11,12 @@ let workbookCache:{at:number;fetchedAt:string;workbook:any;sourceMode:string}|nu
 let googleTokenCache:{token:string;expiresAt:number}|null=null;
 let sourceIdCache='';
 
+function allowedOrigin(o:string){return o==='https://etos-palu.vercel.app'||/^https:\/\/etos-palu-[a-z0-9-]+-etosidpalu\.vercel\.app$/i.test(o)||/^http:\/\/localhost(?::\d+)?$/i.test(o)}
 function cors(req:Request){
   const o=req.headers.get('origin')||'';
-  const ok=o==='https://etos-palu.vercel.app'||/^https:\/\/[a-z0-9-]+(?:-[a-z0-9-]+)*\.vercel\.app$/i.test(o)||/^http:\/\/localhost(?::\d+)?$/i.test(o);
-  return {'Access-Control-Allow-Origin':ok?o:'https://etos-palu.vercel.app','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST,OPTIONS','Vary':'Origin'};
+  return {'Access-Control-Allow-Origin':allowedOrigin(o)?o:'https://etos-palu.vercel.app','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST,OPTIONS','Vary':'Origin'};
 }
-function json(req:Request,body:any,status=200){return new Response(JSON.stringify(body),{status,headers:{...cors(req),'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}})}
+function json(req:Request,body:any,status=200){return new Response(JSON.stringify(body),{status,headers:{...cors(req),'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Pragma':'no-cache','X-Content-Type-Options':'nosniff'}})}
 function clean(v:any){return v==null?'':String(v).trim()}
 async function sha(v:string){const h=new Uint8Array(await crypto.subtle.digest('SHA-256',enc.encode(v)));return[...h].map(b=>b.toString(16).padStart(2,'0')).join('')}
 async function db(path:string,opt:RequestInit={}){
@@ -67,7 +67,7 @@ async function fetchSourceFile(){
     if(!r.ok)throw new Error(`Sumber IDP terautentikasi tidak dapat dibaca (HTTP ${r.status}).`);
     return {bytes:new Uint8Array(await r.arrayBuffer()),sourceMode:'google_drive_authenticated'};
   }
-  const r=await fetch(`https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`,{redirect:'follow',headers:{'User-Agent':'ETOS-IDP-Live/3.1'}});
+  const r=await fetch(`https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`,{redirect:'follow',headers:{'User-Agent':'ETOS-IDP-Live/4.0'}});
   if(!r.ok)throw new Error(`Sumber IDP transisi tidak dapat dibaca (HTTP ${r.status}).`);
   return {bytes:new Uint8Array(await r.arrayBuffer()),sourceMode:'google_drive_public_transition'};
 }
