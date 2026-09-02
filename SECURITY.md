@@ -10,6 +10,7 @@
 - Sensitive table writes are not granted directly to the browser role.
 - Production UI fails closed when the secure runtime is unavailable; it does not report simulated success.
 - Supabase IDP snapshots act as a resilience cache when the central Drive source is temporarily unavailable.
+- The Google Drive source identifier is stored server-side and is not exposed in browser code or the default GitHub branch.
 
 ## Final Google Drive lockdown
 
@@ -31,14 +32,15 @@ Share the central IDP workbook directly with the service account email using **V
 
 Do not give the service account Editor/Writer permission.
 
-### 3. Configure Supabase Edge Function secrets
+### 3. Configure the Supabase Edge Function secret
 
-Configure these values in Supabase Edge Function secrets/environment variables:
+Configure this value in Supabase Edge Function secrets/environment variables:
 
 - `GOOGLE_SERVICE_ACCOUNT_JSON` — the complete service-account JSON credential.
-- `GOOGLE_DRIVE_SOURCE_ID` — the central IDP workbook file ID.
 
-Do not commit either value to this repository.
+The central Drive file identifier is already stored in the RLS-protected `etos_server_settings` table. `GOOGLE_DRIVE_SOURCE_ID` can be used as an optional server-side environment override, but it is not required for the current deployment.
+
+Do not commit credentials or source identifiers to public source code.
 
 The deployed `etos-idp-live` function automatically switches to `google_drive_authenticated` when `GOOGLE_SERVICE_ACCOUNT_JSON` exists.
 
